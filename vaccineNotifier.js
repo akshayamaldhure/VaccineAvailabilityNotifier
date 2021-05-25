@@ -26,16 +26,17 @@ async function checkAvailability() {
         var findBy = entry.find_by;
         var findValue = entry.find_value;
         var age = entry.age;
+        var dose = entry.dose;
         var toEmail = entry.to_email;
         console.log("Finding available slots for " + toEmail + " of age " + age + " by " + findBy + " " + findValue);
 
         datesArray.forEach(date => {
-            getSlotsForDate(date, findBy, findValue, age, toEmail);
+            getSlotsForDate(date, findBy, findValue, age, dose, toEmail);
         });
     });
 }
 
-function getSlotsForDate(date, findBy, findValue, age, toEmail) {
+function getSlotsForDate(date, findBy, findValue, age, dose, toEmail) {
     const URL_FIND_BY_PINCODE = 'https://cdn-api.co-vin.in/api/v2/appointment/sessions/public/findByPin?pincode=' + findValue + '&date=' + date;
     const URL_FIND_BY_DISTRICT = 'https://cdn-api.co-vin.in/api/v2/appointment/sessions/public/findByDistrict?district_id=' + findValue + '&date=' + date;
     var url = findBy === 'district' ? URL_FIND_BY_DISTRICT : URL_FIND_BY_PINCODE;
@@ -53,10 +54,15 @@ function getSlotsForDate(date, findBy, findValue, age, toEmail) {
     axios(config)
         .then(function (slots) {
             let sessions = slots.data.sessions;
-            let validSlots = sessions.filter(slot => slot.min_age_limit <= age && slot.available_capacity > 0)
+            let validSlots;
+            if (dose === 1) {
+                validSlots = sessions.filter(slot => slot.fee_type === 'Free' && slot.min_age_limit <= age && slot.available_capacity_dose1 > 0); 
+            } else if (dose === 2) {
+                validSlots = sessions.filter(slot => slot.fee_type === 'Free' && slot.min_age_limit <= age && slot.available_capacity_dose2 > 0); 
+            }
             console.log({ date: date, validSlots: validSlots.length })
-            if (validSlots.length > 0) {
-                console.log("Valid vaccination slot(s) found for user " + toEmail + ", sending an email")
+            if (validSlots && validSlots.length > 0) {
+                console.log("Valid vaccination slot(s) found for user " + toEmail + " for dose " + dose + ", sending an email");
                 notifyMe(validSlots, toEmail);
             }
         })
@@ -68,17 +74,14 @@ function getSlotsForDate(date, findBy, findValue, age, toEmail) {
 async function
 
     notifyMe(validSlots, toEmail) {
-    let numVaccines = 0;
-    validSlots.forEach(slot => {
-        numVaccines += slot.available_capacity;
-    });
-    let subject = numVaccines + ' vaccines available near you';
+    let subject = 'Vaccines available near you';
     let slotDetails = JSON.stringify(validSlots, null, '\t');
     if (toEmail.includes(',')) {
         toEmail.split(',').forEach(email => {
             notifier.sendEmail(email, subject, slotDetails, (err, result) => {
                 if (err) {
                     console.error({ err });
+                    console.error('Failed to send email to ' + email);
                 }
             })
         });
@@ -86,6 +89,7 @@ async function
         notifier.sendEmail(toEmail, subject, slotDetails, (err, result) => {
             if (err) {
                 console.error({ err });
+                console.error('Failed to send email to ' + toEmail);
             }
         });
     }
